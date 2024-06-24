@@ -64,8 +64,11 @@ func main() {
     
     brack := newBracket("[", "]")
     curly := newBracket("{", "}")
+    var outerBracket bracket
+    // valBuff - need buffer for values that are objects
     key := true
-    
+    firstDelim := true
+
     for more := true; more; {
         
         token, err := decoder.Token()
@@ -78,11 +81,32 @@ func main() {
         }
         
         more = decoder.More()
-        
-        if key {
-            //something
+       
+        // first token should always be an outer bracket
+        // outerBracket will be used to check for end of object later
+        if firstDelim {
+            switch token {
+            case "[": 
+                outerBracket = newBracket("[", "]")
+            case "{":
+                outerBracket = newBracket("{", "}")
+            }
+            firstDelim = false
+        }
+
+        if !key {
+            // check token type
+            // if delim then add to brack/curly open/close count
+            // add bytes to value buffer
+            // if not delim or a close bracket, check open/close counts of brack and curly
+            // if cntOpen == cntClose for both then 
+            //      grab length of value in buffer
+            //      stream valueLength and then value 
+            //      switch key variable (key = true)
         } else {
-            
+            // convert key to bytes
+            // take length of bytes
+            //stream keyLength and then keyBytes
         }
 
     }
