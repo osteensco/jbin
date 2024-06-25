@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 )
 
 
@@ -30,16 +32,58 @@ type bracket struct {
     cntClose int64
 }
 
+/*
+Iterate cntOpen field by 1.
+*/
 func (b *bracket) addOpen() {
     b.cntOpen += 1
 }
 
+/*
+Iterate cntClose field by 1.
+*/
 func (b *bracket) addClose() {
     b.cntClose += 1
 }
 
-func newBracket(open string, close string) bracket {
-    return bracket {open, close, 0, 0}
+/*
+Reset cntOpen field to 0.
+*/
+func (b *bracket) resetOpen() {
+    b.cntOpen = 0
+}
+
+/*
+Reset cntClose field to 0.
+*/
+func (b *bracket) resetClose() {
+    b.cntClose = 0
+}
+
+/* 
+Creates a new bracket struct.  
+
+'cntOpen' and 'cntClose' fields are set to 0 on initialization.
+*/
+func newBracket(open string, close string) *bracket {
+    return &bracket{open, close, 0, 0}
+}
+
+func iterateBracketCount(t json.Token, brack *bracket, curly *bracket) {
+    switch t {
+    case "[":
+        brack.addOpen()
+    case "]":
+        brack.addClose()
+    case "{":
+        curly.addOpen()
+    case "}":
+        curly.addClose()
+    }
+}
+
+func writeToDisk(c chan, file *os.File) {
+// iterate over buffered channel and write values to file
 }
 
 
@@ -60,16 +104,25 @@ func main() {
     }
     defer file.Close()
 
+    // make new file
+    // newFile := os.Create()
+
     decoder := json.NewDecoder(file)
     
     brack := newBracket("[", "]")
     curly := newBracket("{", "}")
-    var outerBracket bracket
-    // valBuff - need buffer for values that are objects
     key := true
     firstDelim := true
-
-    for more := true; more; {
+    var keyLen uint8
+    var valLen uint64
+    var valBuffer bytes.Buffer
+    // need buffered channel and go routine for monitoring channel and writing to file
+    
+    for {
+        if firstDelim {
+            firstDelim = false
+            continue
+        }
         
         token, err := decoder.Token()
         if err == io.EOF {
@@ -77,36 +130,47 @@ func main() {
         }
 
         if err != nil {
-            fmt.Println("Error decoding token: ", err)
+            fmt.Println("Error streaming json: ", err)
+            os.Exit(1)
         }
         
-        more = decoder.More()
-       
-        // first token should always be an outer bracket
-        // outerBracket will be used to check for end of object later
-        if firstDelim {
-            switch token {
-            case "[": 
-                outerBracket = newBracket("[", "]")
-            case "{":
-                outerBracket = newBracket("{", "}")
-            }
-            firstDelim = false
-        }
-
+        tokentype := fmt.Sprintf("%T", reflect.TypeOf(token))
+        
         if !key {
-            // check token type
-            // if delim then add to brack/curly open/close count
-            // add bytes to value buffer
-            // if not delim or a close bracket, check open/close counts of brack and curly
-            // if cntOpen == cntClose for both then 
-            //      grab length of value in buffer
-            //      stream valueLength and then value 
-            //      switch key variable (key = true)
+            if tokentype == "json.Delim"{
+                iterateBracketCount(token, brack, curly)
+            }
+
+            valBytes := token.([]byte)
+            valLen = uint64(len(valBytes))
+            // add token to valBuffer here
+            
+            if tokentype != "json.Delim" || token == brack.close || token == curly.close {   
+                
+                if brack.cntOpen == brack.cntClose && curly.cntOpen == curly.cntClose {
+            //      grab value and length of value from  valBuffer
+            //      stream valueLength and then value into channel
+                    
+                    key = true
+                    brack.resetOpen()
+                    brack.resetClose()
+                    curly.resetOpen()
+                    curly.resetClose()
+                } else {
+                    // add delimiter "," to buffer
+                }
+
+            }
+
         } else {
-            // convert key to bytes
-            // take length of bytes
-            //stream keyLength and then keyBytes
+            if tokentype == "json.Delim"{
+                continue
+            }
+
+            keyBytes := token.([]byte)
+            keyLen = uint8(len(keyBytes))
+            // stream keyLength and then keyBytes into channel
+            key = false
         }
 
     }
