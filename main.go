@@ -82,7 +82,7 @@ func iterateBracketCount(t json.Token, brack *bracket, curly *bracket) {
     }
 }
 
-func writeToDisk(c chan, file *os.File) {
+func writeToDisk(c chan([]byte), file *os.File) {
 // iterate over buffered channel and write values to file
 }
 
@@ -116,7 +116,10 @@ func main() {
     var keyLen uint8
     var valLen uint64
     var valBuffer bytes.Buffer
-    // need buffered channel and go routine for monitoring channel and writing to file
+    var keyBuffer bytes.Buffer
+    // need buffered channel (writeChannel)
+    
+    // go writeToDisk(writeChannel)
     
     for {
         if firstDelim {
@@ -137,27 +140,27 @@ func main() {
         tokentype := fmt.Sprintf("%T", reflect.TypeOf(token))
         
         if !key {
+ 
+            valBytes := token.([]byte)
+            // add valBytes to valBuffer
+            
             if tokentype == "json.Delim"{
                 iterateBracketCount(token, brack, curly)
             }
-
-            valBytes := token.([]byte)
-            valLen = uint64(len(valBytes))
-            // add token to valBuffer here
             
             if tokentype != "json.Delim" || token == brack.close || token == curly.close {   
                 
                 if brack.cntOpen == brack.cntClose && curly.cntOpen == curly.cntClose {
-            //      grab value and length of value from  valBuffer
-            //      stream valueLength and then value into channel
-                    
+            //      grab value and length of value from valBuffer
+            //      stream [keyBuffer, valueLength, value] into channel
+
                     key = true
                     brack.resetOpen()
                     brack.resetClose()
                     curly.resetOpen()
                     curly.resetClose()
                 } else {
-                    // add delimiter "," to buffer
+                    // add delimiter "," to valBuffer
                 }
 
             }
@@ -169,7 +172,7 @@ func main() {
 
             keyBytes := token.([]byte)
             keyLen = uint8(len(keyBytes))
-            // stream keyLength and then keyBytes into channel
+            // stream keyLength and then keyBytes into keyBuffer
             key = false
         }
 
