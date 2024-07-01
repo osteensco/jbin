@@ -10,6 +10,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 )
 
 
@@ -87,10 +88,15 @@ func iterateBracketCount(t json.Token, brack *bracket, curly *bracket) {
 /*
 iterate over buffered channel and write values to file
 */
-func writeToDisk(c chan([]byte), file *os.File) {
+func writeToDisk(c chan([]byte), file *os.File, wg *sync.WaitGroup) {
+    
     for m := range c {
+        
         file.Write(m)
+        wg.Done()
+
     }
+
 }
 
 
@@ -101,7 +107,10 @@ func main() {
     var file *os.File
     var newFile *os.File
     var err error
-    
+    var wg *sync.WaitGroup
+
+
+
     if path, err = parseCmd(os.Args); err != nil {
         fmt.Println(err)
         os.Exit(1)
@@ -131,7 +140,7 @@ func main() {
     
     writeChannel := make(chan []byte) 
     
-    go writeToDisk(writeChannel, newFile)
+    go writeToDisk(writeChannel, newFile, wg)
     
     for {
         if firstDelim {
@@ -174,6 +183,7 @@ func main() {
                     m := append(append(append([]byte{}, keyBytes...), valLenBytes...), valBytes...)
 
                     //  stream [keyBuffer contents, valueLength, value] into channel
+                    wg.Add(1)
                     writeChannel <- m
 
                     // book keeping
@@ -212,17 +222,7 @@ func main() {
 
     }
 
-
-    // TODO
-    
-    // read JSON file key by key? or iteratively in some way
-    //      - json decoder and token
-
-    // convert to binary encoding
-    //      - keyLength|key|valueLength|value
-    //      - all values would be converted to UTF8 strings
-
-    // stream into a new file
+    wg.Wait()
 
 }
 
