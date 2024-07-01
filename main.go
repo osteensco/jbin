@@ -2,12 +2,14 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"reflect"
+	"strings"
 )
 
 
@@ -82,8 +84,13 @@ func iterateBracketCount(t json.Token, brack *bracket, curly *bracket) {
     }
 }
 
+/*
+iterate over buffered channel and write values to file
+*/
 func writeToDisk(c chan([]byte), file *os.File) {
-// iterate over buffered channel and write values to file
+    for m := range c {
+        file.Write(m)
+    }
 }
 
 
@@ -92,6 +99,7 @@ func main() {
 
     var path string
     var file *os.File
+    var newFile *os.File
     var err error
     
     if path, err = parseCmd(os.Args); err != nil {
@@ -105,7 +113,10 @@ func main() {
     defer file.Close()
 
     // make new file
-    // newFile := os.Create()
+    if newFile, err = os.Create(strings.Trim(path, ".json")+".bin"); err != nil {
+        fmt.Println("Error creating new file", err)
+    }
+
 
     decoder := json.NewDecoder(file)
     
@@ -117,9 +128,10 @@ func main() {
     var valLen uint64
     var valBuffer bytes.Buffer
     var keyBuffer bytes.Buffer
-    // need buffered channel (writeChannel)
     
-    // go writeToDisk(writeChannel)
+    writeChannel := make(chan []byte) 
+    
+    go writeToDisk(writeChannel, newFile)
     
     for {
         if firstDelim {
@@ -142,7 +154,7 @@ func main() {
         if !key {
  
             valBytes := token.([]byte)
-            // add valBytes to valBuffer
+            valBuffer.Write(valBytes)
             
             if tokentype == "json.Delim"{
                 iterateBracketCount(token, brack, curly)
@@ -151,16 +163,30 @@ func main() {
             if tokentype != "json.Delim" || token == brack.close || token == curly.close {   
                 
                 if brack.cntOpen == brack.cntClose && curly.cntOpen == curly.cntClose {
-            //      grab value and length of value from valBuffer
-            //      stream [keyBuffer, valueLength, value] into channel
+                    //  grab value and length of value from valBuffer
+                    valLen = uint64(valBuffer.Len())
+                    valLenBytes := make([]byte, 8)
+                    binary.LittleEndian.PutUint64(valLenBytes, valLen)
 
+                    valBytes = valBuffer.Bytes()
+                    keyBytes := keyBuffer.Bytes() // contains keyLen and keyBytes from the else clause in if !key
+
+                    m := append(append(append([]byte{}, keyBytes...), valLenBytes...), valBytes...)
+
+                    //  stream [keyBuffer contents, valueLength, value] into channel
+                    writeChannel <- m
+
+                    // book keeping
                     key = true
                     brack.resetOpen()
                     brack.resetClose()
                     curly.resetOpen()
                     curly.resetClose()
+                    keyBuffer.Reset()
+                    valBuffer.Reset()
                 } else {
                     // add delimiter "," to valBuffer
+                    valBuffer.Write([]byte(","))
                 }
 
             }
@@ -172,7 +198,15 @@ func main() {
 
             keyBytes := token.([]byte)
             keyLen = uint8(len(keyBytes))
+            keyLenBytes := make([]byte, 2)
+            // custom implementation of binary.LittleEndian.PutUint8() since it doesn't exist
+            // https://go.dev/src/encoding/binary/binary.go
+            _ = keyLenBytes[0]
+            keyLenBytes[0] = byte(keyLen)
+            
             // stream keyLength and then keyBytes into keyBuffer
+            keyBuffer.Write(keyLenBytes)
+            keyBuffer.Write(keyBytes)
             key = false
         }
 
