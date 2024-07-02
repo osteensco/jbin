@@ -208,7 +208,7 @@ func main() {
 
             keyBytes := token.([]byte)
             keyLen = uint8(len(keyBytes))
-            keyLenBytes := make([]byte, 2)
+            keyLenBytes := make([]byte, 1)
             // custom implementation of binary.LittleEndian.PutUint8() since it doesn't exist
             // https://go.dev/src/encoding/binary/binary.go
             _ = keyLenBytes[0]
