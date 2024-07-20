@@ -211,8 +211,8 @@ func main() {
             keyLenBytes := make([]byte, 1)
             // custom implementation of binary.LittleEndian.PutUint8() since it doesn't exist
             // https://go.dev/src/encoding/binary/binary.go
-            _ = keyLenBytes[0]
-            keyLenBytes[0] = byte(keyLen)
+            _ = keyLenBytes[0] // this line is unnecessary but kep as is for duplicating other LittleEndian Put methods logic
+            keyLenBytes[0] = byte(keyLen) // similar to above casting as byte unnecessary
             
             // stream keyLength and then keyBytes into keyBuffer
             keyBuffer.Write(keyLenBytes)
