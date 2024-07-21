@@ -102,6 +102,7 @@ func writeToDisk(c chan([]byte), file *os.File, wg *sync.WaitGroup) {
 type streamProps struct {
 
     decoder *json.Decoder
+    writeChannel chan []byte
     brack *bracket
     curly *bracket
     key bool
@@ -111,7 +112,6 @@ type streamProps struct {
     valBuffer bytes.Buffer
     keyBuffer bytes.Buffer
     wg *sync.WaitGroup
-    writeChannel chan []byte
 }
 
 func streamJson(prop streamProps) {
@@ -204,9 +204,6 @@ func main() {
     var file *os.File
     var newFile *os.File
     var err error
-    var wg *sync.WaitGroup
-
-
 
     if path, err = parseCmd(os.Args); err != nil {
         fmt.Println(err)
@@ -218,14 +215,12 @@ func main() {
     }
     defer file.Close()
 
-    // make new file
     if newFile, err = os.Create(strings.Trim(path, ".json")+".bin"); err != nil {
         fmt.Println("Error creating new file", err)
     }
 
-
     decoder := json.NewDecoder(file)
-    
+    writeChannel := make(chan []byte) 
     brack := newBracket("[", "]")
     curly := newBracket("{", "}")
     key := true
@@ -234,11 +229,11 @@ func main() {
     var valLen uint64
     var valBuffer bytes.Buffer
     var keyBuffer bytes.Buffer
-    
-    writeChannel := make(chan []byte) 
-    
+    var wg *sync.WaitGroup
+     
     props := streamProps{
        decoder,
+       writeChannel,
        brack,
        curly,
        key,
@@ -248,7 +243,6 @@ func main() {
        valBuffer,
        keyBuffer,
        wg,
-       writeChannel,
    }
     
     go writeToDisk(writeChannel, newFile, wg)
