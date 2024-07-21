@@ -98,8 +98,105 @@ func writeToDisk(c chan([]byte), file *os.File, wg *sync.WaitGroup) {
     }
 
 }
+    
+type streamProps struct {
 
+    decoder *json.Decoder
+    brack *bracket
+    curly *bracket
+    key bool
+    firstDelim bool
+    keyLen uint8
+    valLen uint64
+    valBuffer bytes.Buffer
+    keyBuffer bytes.Buffer
+    wg *sync.WaitGroup
+    writeChannel chan []byte
+}
 
+func streamJson(prop streamProps) {
+    for {
+       if prop.firstDelim {
+            prop.firstDelim = false
+            continue
+        }
+        
+        token, err := prop.decoder.Token()
+        if err == io.EOF {
+            break
+        }
+
+        if err != nil {
+            fmt.Println("Error streaming json: ", err)
+            os.Exit(1)
+        }
+        
+        tokentype := fmt.Sprintf("%T", reflect.TypeOf(token))
+        
+        if !prop.key {
+ 
+            valBytes := token.([]byte)
+            prop.valBuffer.Write(valBytes)
+            
+            if tokentype == "json.Delim"{
+                iterateBracketCount(token, prop.brack, prop.curly)
+            }
+            
+            if tokentype != "json.Delim" || token == prop.brack.close || token == prop.curly.close {   
+                
+                if prop.brack.cntOpen == prop.brack.cntClose && prop.curly.cntOpen == prop.curly.cntClose {
+                    //  grab value and length of value from valBuffer
+                    prop.valLen = uint64(prop.valBuffer.Len())
+                    valLenBytes := make([]byte, 8)
+                    binary.LittleEndian.PutUint64(valLenBytes, prop.valLen)
+
+                    valBytes = prop.valBuffer.Bytes()
+                    keyBytes := prop.keyBuffer.Bytes() // contains keyLen and keyBytes from the else clause in if !key
+
+                    m := append(append(append([]byte{}, keyBytes...), valLenBytes...), valBytes...)
+
+                    //  stream [keyBuffer contents, valueLength, value] into channel
+                    prop.wg.Add(1)
+                    prop.writeChannel <- m
+
+                    // book keeping
+                    prop.key = true
+                    prop.brack.resetOpen()
+                    prop.brack.resetClose()
+                    prop.curly.resetOpen()
+                    prop.curly.resetClose()
+                    prop.keyBuffer.Reset()
+                    prop.valBuffer.Reset()
+                } else {
+                    // add delimiter "," to valBuffer
+                    prop.valBuffer.Write([]byte(","))
+                }
+
+            }
+
+        } else {
+            if tokentype == "json.Delim"{
+                continue
+            }
+
+            keyBytes := token.([]byte)
+            prop.keyLen = uint8(len(keyBytes))
+            keyLenBytes := make([]byte, 1)
+            // custom implementation of binary.LittleEndian.PutUint8() since it doesn't exist
+            // https://go.dev/src/encoding/binary/binary.go
+            _ = keyLenBytes[0] // this line is unnecessary but kep as is for duplicating other LittleEndian Put methods logic
+            keyLenBytes[0] = byte(prop.keyLen) // similar to above casting as byte unnecessary
+            
+            // stream keyLength and then keyBytes into keyBuffer
+            prop.keyBuffer.Write(keyLenBytes)
+            prop.keyBuffer.Write(keyBytes)
+            prop.key = false
+        }
+
+    }
+
+    prop.wg.Wait()
+}
 
 func main() {
 
@@ -140,89 +237,23 @@ func main() {
     
     writeChannel := make(chan []byte) 
     
+    props := streamProps{
+       decoder,
+       brack,
+       curly,
+       key,
+       firstDelim,
+       keyLen,
+       valLen,
+       valBuffer,
+       keyBuffer,
+       wg,
+       writeChannel,
+   }
+    
     go writeToDisk(writeChannel, newFile, wg)
     
-    for {
-        if firstDelim {
-            firstDelim = false
-            continue
-        }
-        
-        token, err := decoder.Token()
-        if err == io.EOF {
-            break
-        }
-
-        if err != nil {
-            fmt.Println("Error streaming json: ", err)
-            os.Exit(1)
-        }
-        
-        tokentype := fmt.Sprintf("%T", reflect.TypeOf(token))
-        
-        if !key {
- 
-            valBytes := token.([]byte)
-            valBuffer.Write(valBytes)
-            
-            if tokentype == "json.Delim"{
-                iterateBracketCount(token, brack, curly)
-            }
-            
-            if tokentype != "json.Delim" || token == brack.close || token == curly.close {   
-                
-                if brack.cntOpen == brack.cntClose && curly.cntOpen == curly.cntClose {
-                    //  grab value and length of value from valBuffer
-                    valLen = uint64(valBuffer.Len())
-                    valLenBytes := make([]byte, 8)
-                    binary.LittleEndian.PutUint64(valLenBytes, valLen)
-
-                    valBytes = valBuffer.Bytes()
-                    keyBytes := keyBuffer.Bytes() // contains keyLen and keyBytes from the else clause in if !key
-
-                    m := append(append(append([]byte{}, keyBytes...), valLenBytes...), valBytes...)
-
-                    //  stream [keyBuffer contents, valueLength, value] into channel
-                    wg.Add(1)
-                    writeChannel <- m
-
-                    // book keeping
-                    key = true
-                    brack.resetOpen()
-                    brack.resetClose()
-                    curly.resetOpen()
-                    curly.resetClose()
-                    keyBuffer.Reset()
-                    valBuffer.Reset()
-                } else {
-                    // add delimiter "," to valBuffer
-                    valBuffer.Write([]byte(","))
-                }
-
-            }
-
-        } else {
-            if tokentype == "json.Delim"{
-                continue
-            }
-
-            keyBytes := token.([]byte)
-            keyLen = uint8(len(keyBytes))
-            keyLenBytes := make([]byte, 1)
-            // custom implementation of binary.LittleEndian.PutUint8() since it doesn't exist
-            // https://go.dev/src/encoding/binary/binary.go
-            _ = keyLenBytes[0] // this line is unnecessary but kep as is for duplicating other LittleEndian Put methods logic
-            keyLenBytes[0] = byte(keyLen) // similar to above casting as byte unnecessary
-            
-            // stream keyLength and then keyBytes into keyBuffer
-            keyBuffer.Write(keyLenBytes)
-            keyBuffer.Write(keyBytes)
-            key = false
-        }
-
-    }
-
-    wg.Wait()
+    streamJson(props)
 
 }
 
