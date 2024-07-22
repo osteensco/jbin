@@ -14,17 +14,19 @@ import (
 )
 
 
-
+/*
+Takes output of os.Args ([]string), removes program name, verifies only one arg present, and returns arg.
+*/
 func parseCmd(args []string) (string, error) {
     
     cmd := args[1:]
     l := len(cmd)
 
-    if l > 2 {
+    if l > 1 {
         return "", errors.New(fmt.Sprintf("Too many args provided %v, usage: jbin <filepath>", args))
     }
      
-    return args[1], nil
+    return cmd[0], nil
 
 }
 
@@ -100,7 +102,6 @@ func writeToDisk(c chan([]byte), file *os.File, wg *sync.WaitGroup) {
 }
     
 type streamProps struct {
-
     decoder *json.Decoder
     writeChannel chan []byte
     brack *bracket
@@ -114,6 +115,10 @@ type streamProps struct {
     wg *sync.WaitGroup
 }
 
+/*
+Reads in a Json file and passes contents into key and value buffers. 
+Once a key-value pair is completed, streams contents into a write channel for go routine to write to disk.
+*/
 func streamJson(prop streamProps) {
     for {
        if prop.firstDelim {
@@ -184,8 +189,8 @@ func streamJson(prop streamProps) {
             keyLenBytes := make([]byte, 1)
             // custom implementation of binary.LittleEndian.PutUint8() since it doesn't exist
             // https://go.dev/src/encoding/binary/binary.go
-            _ = keyLenBytes[0] // this line is unnecessary but kep as is for duplicating other LittleEndian Put methods logic
-            keyLenBytes[0] = byte(prop.keyLen) // similar to above casting as byte unnecessary
+            _ = keyLenBytes[0] // this line is unnecessary but kept as is for duplicating other LittleEndian Put methods logic
+            keyLenBytes[0] = byte(prop.keyLen) // similar to above, casting as byte unnecessary
             
             // stream keyLength and then keyBytes into keyBuffer
             prop.keyBuffer.Write(keyLenBytes)
