@@ -13,7 +13,6 @@ import (
 	"sync"
 )
 
-
 /*
 Takes output of os.Args ([]string), removes program name, verifies only one arg present, and returns arg.
 */
@@ -91,7 +90,8 @@ func iterateBracketCount(t json.Token, brack *bracket, curly *bracket) {
 iterate over buffered channel and write values to file
 */
 func writeToDisk(c chan([]byte), file *os.File, wg *sync.WaitGroup) {
-    
+   
+    defer close(c)
     for m := range c {
         
         file.Write(m)
@@ -110,8 +110,8 @@ type streamProps struct {
     firstDelim bool
     keyLen uint8
     valLen uint64
-    valBuffer bytes.Buffer
-    keyBuffer bytes.Buffer
+    valBuffer *bytes.Buffer
+    keyBuffer *bytes.Buffer
     wg *sync.WaitGroup
 }
 
@@ -119,7 +119,7 @@ type streamProps struct {
 Reads in a Json file and passes contents into key and value buffers. 
 Once a key-value pair is completed, streams contents into a write channel for go routine to write to disk.
 */
-func streamJson(prop streamProps) {
+func streamJson(prop *streamProps) {
     for {
        if prop.firstDelim {
             prop.firstDelim = false
@@ -130,19 +130,26 @@ func streamJson(prop streamProps) {
         if err == io.EOF {
             break
         }
-
+        fmt.Println(token)
         if err != nil {
             fmt.Println("Error streaming json: ", err)
             os.Exit(1)
         }
-        
-        tokentype := fmt.Sprintf("%T", reflect.TypeOf(token))
-        
+
+        tokentype := fmt.Sprintf("%v", reflect.TypeOf(token))
+        // if _, ok := token.(string); !ok {
+        //     fmt.Printf("Error asserting token as string: %v is type %v", token, tokentype)
+        //     os.Exit(1)
+        // }
+
         if !prop.key {
  
-            valBytes := token.([]byte)
-            prop.valBuffer.Write(valBytes)
-            
+            valBytes := []byte(token.(string))
+            if _, err := prop.valBuffer.Write(valBytes); err != nil {
+                fmt.Println("Error writing to valBuffer: ", err)
+                os.Exit(1)
+            }
+
             if tokentype == "json.Delim"{
                 iterateBracketCount(token, prop.brack, prop.curly)
             }
@@ -174,7 +181,10 @@ func streamJson(prop streamProps) {
                     prop.valBuffer.Reset()
                 } else {
                     // add delimiter "," to valBuffer
-                    prop.valBuffer.Write([]byte(","))
+                    if _, err := prop.valBuffer.Write([]byte(",")); err != nil {
+                        fmt.Println("Error writing to valBuffer: ", err)
+                        os.Exit(1)
+                    }
                 }
 
             }
@@ -183,8 +193,7 @@ func streamJson(prop streamProps) {
             if tokentype == "json.Delim"{
                 continue
             }
-
-            keyBytes := token.([]byte)
+            keyBytes := []byte(token.(string))
             prop.keyLen = uint8(len(keyBytes))
             keyLenBytes := make([]byte, 1)
             // custom implementation of binary.LittleEndian.PutUint8() since it doesn't exist
@@ -193,8 +202,14 @@ func streamJson(prop streamProps) {
             keyLenBytes[0] = byte(prop.keyLen) // similar to above, casting as byte unnecessary
             
             // stream keyLength and then keyBytes into keyBuffer
-            prop.keyBuffer.Write(keyLenBytes)
-            prop.keyBuffer.Write(keyBytes)
+            if _, err := prop.keyBuffer.Write(keyLenBytes); err != nil {
+                fmt.Println("Error writing to keyBuffer: ", err)
+                os.Exit(1)
+            }
+            if _, err := prop.keyBuffer.Write(keyBytes); err != nil {
+                fmt.Println("Error writing to valBuffer: ", err)
+                os.Exit(1)
+            }
             prop.key = false
         }
 
@@ -217,11 +232,13 @@ func main() {
     
     if file, err = os.Open(path); err != nil {
         fmt.Println("Error opening file: ", err)
+        os.Exit(1)
     }
     defer file.Close()
 
     if newFile, err = os.Create(strings.Trim(path, ".json")+".bin"); err != nil {
         fmt.Println("Error creating new file", err)
+        os.Exit(1)
     }
 
     decoder := json.NewDecoder(file)
@@ -230,11 +247,11 @@ func main() {
     curly := newBracket("{", "}")
     key := true
     firstDelim := true
+    valBuffer := new(bytes.Buffer)
+    keyBuffer := new(bytes.Buffer)
+    wg := new(sync.WaitGroup)
     var keyLen uint8
     var valLen uint64
-    var valBuffer bytes.Buffer
-    var keyBuffer bytes.Buffer
-    var wg *sync.WaitGroup
      
     props := streamProps{
        decoder,
@@ -252,7 +269,7 @@ func main() {
     
     go writeToDisk(writeChannel, newFile, wg)
     
-    streamJson(props)
+    streamJson(&props)
 
 }
 
