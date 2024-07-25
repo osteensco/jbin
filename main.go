@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -123,6 +124,10 @@ func streamJson(prop *streamProps) {
     for {
        if prop.firstDelim {
             prop.firstDelim = false
+            _, err := prop.decoder.Token()
+            if err == io.EOF {
+                break
+            }
             continue
         }
         
@@ -130,7 +135,7 @@ func streamJson(prop *streamProps) {
         if err == io.EOF {
             break
         }
-        fmt.Println(token)
+
         if err != nil {
             fmt.Println("Error streaming json: ", err)
             os.Exit(1)
@@ -210,6 +215,7 @@ func streamJson(prop *streamProps) {
                 fmt.Println("Error writing to valBuffer: ", err)
                 os.Exit(1)
             }
+
             prop.key = false
         }
 
@@ -240,6 +246,7 @@ func main() {
         fmt.Println("Error creating new file", err)
         os.Exit(1)
     }
+    defer newFile.Close()
 
     decoder := json.NewDecoder(file)
     writeChannel := make(chan []byte) 
@@ -271,7 +278,84 @@ func main() {
     
     streamJson(&props)
 
+    mp := readMap(newFile)
+    printMap(mp)
+
+}
+
+func printMap(hashmap map[string]string) {
+
+    fmt.Println("")
+
+    keys := make([]string, 0, len(hashmap))
+    for k := range hashmap {
+        keys = append(keys, k)
+    }
+
+    sort.Strings(keys)
+
+    for i := range keys {
+
+        fmt.Printf("%v: %v\n", keys[i], hashmap[keys[i]])
+                                                        
+    }
+
+    fmt.Println("")
+
 }
 
 
+func readMap(file *os.File) map[string]string {
+
+    pathMap := make(map[string]string)
+
+    _, err := file.Seek(0,0) 
+    if err != nil {
+        fmt.Println("Error seeking to beginning of file: ", err)
+        os.Exit(1)
+    }
+
+    // key length integer should always fit in 8 bits
+    var keyLen uint8
+    // value length integer should always fit in 16 bits
+    var valLen uint64
+
+    // this should iterate until the end of the file
+    for {
+        // read length of key, use length to read in key
+        err = binary.Read(file, binary.LittleEndian, &keyLen)
+        // End Of File error should only ever happen here
+        if err == io.EOF {
+            break
+        }
+        if err != nil {
+            fmt.Println("Error reading keyLen binary: ", err)
+            os.Exit(1)
+        }
+        keyBytes := make([]byte, keyLen)
+        _, err = file.Read(keyBytes)
+        if err != nil {
+            fmt.Println("Error reading in keyBytes: ", err)
+        }
+
+        // read length of value, use length to read in value
+        err = binary.Read(file, binary.LittleEndian, &valLen)
+        if err != nil {
+            fmt.Println("Error reading valLen binary: ", err)
+            os.Exit(1)
+        }
+        valBytes := make([]byte, valLen)
+        _, err = file.Read(valBytes)
+        if err != nil {
+            fmt.Println("Error reading in valBytes: ", err)
+        }
+
+        fmt.Printf("%v: %v",string(keyBytes), string(valBytes))
+        fmt.Println("")
+        pathMap[string(keyBytes)] = string(valBytes)
+
+    }
+
+    return pathMap
+}
 
