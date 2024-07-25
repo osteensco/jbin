@@ -252,21 +252,21 @@ func main() {
     writeChannel := make(chan []byte) 
     brack := newBracket("[", "]")
     curly := newBracket("{", "}")
-    key := true
-    firstDelim := true
+    // key := true
+    // firstDelim := true
     valBuffer := new(bytes.Buffer)
     keyBuffer := new(bytes.Buffer)
     wg := new(sync.WaitGroup)
     var keyLen uint8
     var valLen uint16
-     
+
     props := streamProps{
        decoder,
        writeChannel,
        brack,
        curly,
-       key,
-       firstDelim,
+       true,// key
+       true,// firstDelim
        keyLen,
        valLen,
        valBuffer,
