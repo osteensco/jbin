@@ -110,7 +110,7 @@ type streamProps struct {
     key bool
     firstDelim bool
     keyLen uint8
-    valLen uint64
+    valLen uint16
     valBuffer *bytes.Buffer
     keyBuffer *bytes.Buffer
     wg *sync.WaitGroup
@@ -163,9 +163,9 @@ func streamJson(prop *streamProps) {
                 
                 if prop.brack.cntOpen == prop.brack.cntClose && prop.curly.cntOpen == prop.curly.cntClose {
                     //  grab value and length of value from valBuffer
-                    prop.valLen = uint64(prop.valBuffer.Len())
-                    valLenBytes := make([]byte, 8)
-                    binary.LittleEndian.PutUint64(valLenBytes, prop.valLen)
+                    prop.valLen = uint16(prop.valBuffer.Len())
+                    valLenBytes := make([]byte, 2)
+                    binary.LittleEndian.PutUint16(valLenBytes, prop.valLen)
 
                     valBytes = prop.valBuffer.Bytes()
                     keyBytes := prop.keyBuffer.Bytes() // contains keyLen and keyBytes from the else clause in if !key
@@ -258,7 +258,7 @@ func main() {
     keyBuffer := new(bytes.Buffer)
     wg := new(sync.WaitGroup)
     var keyLen uint8
-    var valLen uint64
+    var valLen uint16
      
     props := streamProps{
        decoder,
@@ -318,7 +318,7 @@ func readMap(file *os.File) map[string]string {
     // key length integer should always fit in 8 bits
     var keyLen uint8
     // value length integer should always fit in 16 bits
-    var valLen uint64
+    var valLen uint16
 
     // this should iterate until the end of the file
     for {
