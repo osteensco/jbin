@@ -278,8 +278,8 @@ func main() {
     
     streamJson(&props)
 
-    mp := readMap(newFile)
-    printMap(mp)
+    // mp := readMap(newFile)
+    // printMap(mp)
 
 }
 
