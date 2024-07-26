@@ -109,8 +109,8 @@ type streamProps struct {
     curly *bracket
     key bool
     firstDelim bool
-    keyLen uint8
-    valLen uint16
+    keyLen *uint8
+    valLen *uint16
     valBuffer *bytes.Buffer
     keyBuffer *bytes.Buffer
     wg *sync.WaitGroup
@@ -163,9 +163,9 @@ func streamJson(prop *streamProps) {
                 
                 if prop.brack.cntOpen == prop.brack.cntClose && prop.curly.cntOpen == prop.curly.cntClose {
                     //  grab value and length of value from valBuffer
-                    prop.valLen = uint16(prop.valBuffer.Len())
+                    *prop.valLen = uint16(prop.valBuffer.Len())
                     valLenBytes := make([]byte, 2)
-                    binary.LittleEndian.PutUint16(valLenBytes, prop.valLen)
+                    binary.LittleEndian.PutUint16(valLenBytes, *prop.valLen)
 
                     valBytes = prop.valBuffer.Bytes()
                     keyBytes := prop.keyBuffer.Bytes() // contains keyLen and keyBytes from the else clause in if !key
@@ -199,12 +199,12 @@ func streamJson(prop *streamProps) {
                 continue
             }
             keyBytes := []byte(token.(string))
-            prop.keyLen = uint8(len(keyBytes))
+            *prop.keyLen = uint8(len(keyBytes))
             keyLenBytes := make([]byte, 1)
             // custom implementation of binary.LittleEndian.PutUint8() since it doesn't exist
             // https://go.dev/src/encoding/binary/binary.go
             _ = keyLenBytes[0] // this line is unnecessary but kept as is for duplicating other LittleEndian Put methods logic
-            keyLenBytes[0] = byte(prop.keyLen) // similar to above, casting as byte unnecessary
+            keyLenBytes[0] = byte(*prop.keyLen) // similar to above, casting as byte unnecessary
             
             // stream keyLength and then keyBytes into keyBuffer
             if _, err := prop.keyBuffer.Write(keyLenBytes); err != nil {
@@ -267,8 +267,8 @@ func main() {
        curly,
        true,// key
        true,// firstDelim
-       keyLen,
-       valLen,
+       &keyLen,
+       &valLen,
        valBuffer,
        keyBuffer,
        wg,
